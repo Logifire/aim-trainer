@@ -341,46 +341,44 @@ export default function App() {
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 flex-1 flex flex-col gap-6">
 
         {activeTab === 'tracking' ? (
-          <>
-            <section className="w-full bg-surface rounded-2xl p-4 border border-outline-variant/40 flex flex-wrap items-center justify-between gap-4 shadow-lg">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/30">
-                  <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-tertiary animate-pulse' : isPaused ? 'bg-error' : 'bg-outline'}`}></span>
-                  <span className="text-xs uppercase font-bold tracking-wider text-outline">{isRunning ? 'ACTIVE // TRACKING' : isPaused ? 'PAUSED' : 'READY // STANDBY'}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-6 sm:gap-10">
-                <div className="flex flex-col items-center">
-                  <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Time On Target</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="font-headline text-3xl font-black text-primary tracking-tight">{hud.tot.toFixed(1)}</span>
-                    <span className="text-[10px] text-outline font-body">S</span>
-                  </div>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Accuracy</span>
-                  <span className="font-headline text-3xl font-black text-tertiary tracking-tight">{hud.acc.toFixed(1)}%</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Time Remaining</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="font-headline text-3xl font-black text-on-surface">{hud.timer === Infinity ? '∞' : hud.timer.toFixed(1)}</span>
-                    <span className="text-[10px] text-outline font-body">S</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="flex flex-col text-right bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/30">
-                  <span className="text-[10px] uppercase tracking-wider text-outline font-semibold">Best TOT</span>
-                  <span className="text-xs font-bold text-secondary tracking-wider font-headline">
-                    {bestTracking.tot ? `${bestTracking.tot.toFixed(1)}s (${bestTracking.acc.toFixed(1)}%)` : '—'}
-                  </span>
-                </div>
-              </div>
-            </section>
-
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               <div className="lg:col-span-8 flex flex-col gap-3">
+                <section className="w-full bg-surface rounded-2xl p-4 border border-outline-variant/40 flex flex-wrap items-center justify-between gap-4 shadow-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/30">
+                      <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-tertiary animate-pulse' : isPaused ? 'bg-error' : 'bg-outline'}`}></span>
+                      <span className="text-xs uppercase font-bold tracking-wider text-outline">{isRunning ? 'ACTIVE // TRACKING' : isPaused ? 'PAUSED' : 'READY // STANDBY'}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6 sm:gap-10">
+                    <div className="flex flex-col items-center">
+                      <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Time On Target</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-headline text-3xl font-black text-primary tracking-tight">{hud.tot.toFixed(1)}</span>
+                        <span className="text-[10px] text-outline font-body">S</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Accuracy</span>
+                      <span className="font-headline text-3xl font-black text-tertiary tracking-tight">{hud.acc.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Time Remaining</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-headline text-3xl font-black text-on-surface">{hud.timer === Infinity ? '∞' : hud.timer.toFixed(1)}</span>
+                        <span className="text-[10px] text-outline font-body">S</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex flex-col text-right bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/30">
+                      <span className="text-[10px] uppercase tracking-wider text-outline font-semibold">Best TOT</span>
+                      <span className="text-xs font-bold text-secondary tracking-wider font-headline">
+                        {bestTracking.tot ? `${bestTracking.tot.toFixed(1)}s (${bestTracking.acc.toFixed(1)}%)` : '—'}
+                      </span>
+                    </div>
+                  </div>
+                </section>
                 <div
                   ref={arenaRef}
                   className="relative w-full aspect-[16/10] min-h-[440px] bg-surface-container-lowest rounded-2xl border border-outline-variant/50 overflow-hidden shadow-2xl flex flex-col justify-between select-none"
@@ -533,7 +531,6 @@ export default function App() {
                 totalFlick={totalFlick}
               />
             </div>
-          </>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             <div className="lg:col-span-8 flex flex-col gap-3" data-flick-arena>
