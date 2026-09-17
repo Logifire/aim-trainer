@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GameMode, MovementPattern, SessionDuration, TargetGlow, TargetShape } from './types'
 import { useHistory } from './hooks/useHistory'
+import { useTrackingGame } from './hooks/useTrackingGame'
 import { Tabs } from './components/Tabs'
 import { FlickArena } from './components/FlickArena'
 
@@ -35,239 +36,56 @@ export default function App() {
 
   const { add, trackingRecords, flickRecords, bestTracking, bestFlick, totalTracking, totalFlick } = useHistory()
 
-  // engine state - tracking
+  // tracking engine — extracted to hook for better structure + touch support
   const arenaRef = useRef<HTMLDivElement>(null)
   const targetRef = useRef<HTMLDivElement>(null)
 
-  const [isRunning, setIsRunning] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
-  const [hud, setHud] = useState<{ score: number; acc: number; tot: number; timer: number }>({ score: 0, acc: 0, tot: 0, timer: duration })
-  const [coords, setCoords] = useState('X: 000 Y: 000')
-  const [fps, setFps] = useState(60)
-  const [isHovered, setIsHovered] = useState(false)
-  const [showResults, setShowResults] = useState(false)
-  const [result, setResult] = useState<{ score: number; acc: number; on: string; off: string; rank: string; badge: string } | null>(null)
-
-  const stateRef = useRef<{
-    score: number
-    totalFrames: number
-    onTargetFrames: number
-    timeRemaining: number
-    posX: number
-    posY: number
-    velX: number
-    velY: number
-    sinTime: number
-    isHovered: boolean
-    targetShape: TargetShape
-    targetSize: number
-    speedMul: number
-    pattern: MovementPattern
-    glow: TargetGlow
-    duration: SessionDuration
-  }>({
-    score: 0,
-    totalFrames: 0,
-    onTargetFrames: 0,
-    timeRemaining: duration as number,
-    posX: 200,
-    posY: 150,
-    velX: 3.2,
-    velY: 2.2,
-    sinTime: 0,
-    isHovered: false,
-    targetShape, targetSize, speedMul, pattern, glow, duration,
+  const tracking = useTrackingGame({
+    arenaRef,
+    targetRef,
+    targetShape,
+    targetSize,
+    speedMul,
+    pattern,
+    glow,
+    duration,
+    onFinish: useCallback(
+      (r: { score: number; accuracy: number; onTargetSec: number; pattern: MovementPattern; size: number; speed: number; duration: SessionDuration }) => {
+        add({
+          id: String(Date.now()),
+          mode: 'tracking',
+          score: r.score,
+          accuracy: r.accuracy,
+          onTargetSec: r.onTargetSec,
+          pattern: r.pattern,
+          size: r.size,
+          speed: r.speed,
+          duration: r.duration,
+          timestamp: Date.now(),
+        })
+      },
+      [add],
+    ),
   })
-
-  useEffect(() => {
-    stateRef.current.targetShape = targetShape
-    stateRef.current.targetSize = targetSize
-    stateRef.current.speedMul = speedMul
-    stateRef.current.pattern = pattern
-    stateRef.current.glow = glow
-    stateRef.current.duration = duration
-    if (!isRunning) setHud((h) => ({ ...h, timer: duration >= 9999 ? Infinity : duration }))
-  }, [targetShape, targetSize, speedMul, pattern, glow, duration, isRunning])
-
-  const fpsRef = useRef({ frames: 0, last: performance.now() })
-  const rafRef = useRef<number>(0)
-  const lastTsRef = useRef(0)
-
-  const finishSession = useCallback(() => {
-    cancelAnimationFrame(rafRef.current)
-    setIsRunning(false)
-    setIsPaused(false)
-    const s = stateRef.current
-    const score = Math.round(s.score)
-    const acc = s.totalFrames > 0 ? (s.onTargetFrames / s.totalFrames) * 100 : 0
-    const on = (s.onTargetFrames / 60).toFixed(1)
-    const off = Math.max(0, (s.totalFrames - s.onTargetFrames) / 60).toFixed(1)
-    let rank = 'Rookie Tier'
-    let badge = 'Keep Practicing'
-    if (acc >= 90) { rank = 'Apex Operator'; badge = 'World Class Tracking' }
-    else if (acc >= 75) { rank = 'Diamond Operator'; badge = 'Consistent Accuracy' }
-    else if (acc >= 50) { rank = 'Gold Striker'; badge = 'Solid Baseline' }
-    setResult({ score, acc, on, off, rank, badge })
-    setShowResults(true)
-    add({
-      id: String(Date.now()),
-      mode: 'tracking',
-      score,
-      accuracy: Number(acc.toFixed(1)),
-      onTargetSec: Number(on),
-      pattern: s.pattern,
-      size: s.targetSize,
-      speed: s.speedMul,
-      duration: s.duration,
-      timestamp: Date.now(),
-    })
-  }, [add])
-
-  const loop = useCallback((ts: number) => {
-    if (!stateRef.current) return
-    const f = fpsRef.current
-    f.frames++
-    if (ts - f.last >= 1000) {
-      setFps(Math.round((f.frames * 1000) / (ts - f.last)))
-      f.frames = 0
-      f.last = ts
-    }
-    const dt = Math.min((ts - lastTsRef.current) / 1000, 0.1)
-    lastTsRef.current = ts
-    const s = stateRef.current
-    s.totalFrames++
-
-    if (s.duration < 9999) {
-      s.timeRemaining -= dt
-      if (s.timeRemaining <= 0) {
-        s.timeRemaining = 0
-        setHud((h) => ({ ...h, timer: 0 as number }))
-        finishSession()
-        return
-      }
-    }
-
-    if (s.isHovered) {
-      s.onTargetFrames++
-      s.score += 140 * dt
-    }
-
-    const arena = arenaRef.current
-    if (!arena) { rafRef.current = requestAnimationFrame(loop); return }
-    const rect = arena.getBoundingClientRect()
-    const curH = s.targetShape === 'sphere' ? s.targetSize : s.targetSize * 1.5
-    const halfW = s.targetSize / 2
-    const halfH = curH / 2
-    s.sinTime += dt * 2.6 * s.speedMul
-
-    if (s.pattern === 'smooth') {
-      s.posX += s.velX
-      const amplitude = (rect.height - curH) * 0.32
-      const centerY = rect.height / 2
-      const targetY = centerY + Math.sin(s.sinTime) * amplitude * 0.55 + Math.sin(s.sinTime * 0.42) * amplitude * 0.25
-      s.posY += (targetY - s.posY) * 0.05 * (1 + s.speedMul * 0.12) + s.velY * 0.08
-      s.posY = Math.max(halfH, Math.min(rect.height - halfH, s.posY))
-    } else if (s.pattern === 'zigzag') {
-      s.posX += s.velX * 1.25
-      s.posY += s.velY * 1.25
-    } else {
-      s.posX += s.velX
-      s.posY += s.velY
-      if (Math.random() < 0.035) {
-        s.velX = (Math.random() - 0.5) * (5 * s.speedMul)
-        s.velY = (Math.random() - 0.5) * (5 * s.speedMul)
-      }
-    }
-
-    const minX = halfW, maxX = rect.width - halfW, minY = halfH, maxY = rect.height - halfH
-    if (s.posX <= minX) { s.posX = minX; s.velX = Math.abs(s.velX) }
-    else if (s.posX >= maxX) { s.posX = maxX; s.velX = -Math.abs(s.velX) }
-    if (s.posY <= minY) { s.posY = minY; s.velY = Math.abs(s.velY) }
-    else if (s.posY >= maxY) { s.posY = maxY; s.velY = -Math.abs(s.velY) }
-
-    if (targetRef.current) {
-      targetRef.current.style.left = s.posX + 'px'
-      targetRef.current.style.top = s.posY + 'px'
-    }
-
-    const liveAcc = s.totalFrames > 0 ? (s.onTargetFrames / s.totalFrames) * 100 : 0
-    setHud({
-      score: Math.floor(s.score),
-      acc: liveAcc,
-      tot: s.onTargetFrames / 60,
-      timer: s.duration >= 9999 ? Infinity : s.timeRemaining,
-    })
-
-    rafRef.current = requestAnimationFrame(loop)
-  }, [finishSession])
-
-  const start = useCallback(() => {
-    if (isPaused) {
-      setIsPaused(false)
-      setIsRunning(true)
-      setShowResults(false)
-      lastTsRef.current = performance.now()
-      rafRef.current = requestAnimationFrame(loop)
-      return
-    }
-    const s = stateRef.current
-    s.score = 0; s.totalFrames = 0; s.onTargetFrames = 0
-    s.timeRemaining = duration; s.sinTime = 0
-    const rect = arenaRef.current?.getBoundingClientRect()
-    if (rect) { s.posX = rect.width / 2; s.posY = rect.height / 2 }
-    s.velX = (Math.random() > 0.5 ? 1 : -1) * (2.0 * speedMul)
-    s.velY = (Math.random() > 0.5 ? 1 : -1) * (1.6 * speedMul)
-    setIsRunning(true); setIsPaused(false); setShowResults(false)
-    setHud({ score: 0, acc: 0, tot: 0, timer: duration >= 9999 ? Infinity : duration })
-    lastTsRef.current = performance.now()
-    rafRef.current = requestAnimationFrame(loop)
-  }, [isPaused, duration, speedMul, loop])
-
-  const pause = useCallback(() => {
-    if (!isRunning) return
-    setIsPaused(true); setIsRunning(false)
-    cancelAnimationFrame(rafRef.current)
-  }, [isRunning])
-
-  const reset = useCallback(() => {
-    cancelAnimationFrame(rafRef.current)
-    setIsRunning(false); setIsPaused(false); setShowResults(false)
-    const s = stateRef.current
-    s.score = 0; s.totalFrames = 0; s.onTargetFrames = 0; s.timeRemaining = duration
-    setHud({ score: 0, acc: 0, tot: 0, timer: duration >= 9999 ? Infinity : duration })
-    setResult(null)
-    if (document.fullscreenElement) document.exitFullscreen?.()
-  }, [duration])
 
   // pause tracking when switching away from tracking
   useEffect(() => {
-    if (activeTab !== 'tracking' && isRunning) {
-      pause()
+    if (activeTab !== 'tracking' && tracking.isRunning) {
+      tracking.pause()
     }
-  }, [activeTab, isRunning, pause])
+  }, [activeTab, tracking.isRunning, tracking.pause])
 
   // keyboard for tracking only when active
   useEffect(() => {
     if (activeTab !== 'tracking') return
     const h = (e: KeyboardEvent) => {
-      if (e.code === 'Space') { e.preventDefault(); if (!isRunning) start(); else pause() }
-      else if (e.code === 'KeyR') reset()
-      else if (e.code === 'Escape' && isRunning) pause()
+      if (e.code === 'Space') { e.preventDefault(); if (!tracking.isRunning) tracking.start(); else tracking.pause() }
+      else if (e.code === 'KeyR') tracking.reset()
+      else if (e.code === 'Escape' && tracking.isRunning) tracking.pause()
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [activeTab, isRunning, start, pause, reset])
-
-  useEffect(() => {
-    const el = arenaRef.current
-    if (!el) return
-    const onMove = (e: MouseEvent) => {
-      const r = el.getBoundingClientRect()
-      setCoords(`X: ${String(Math.round(e.clientX - r.left)).padStart(3, '0')} Y: ${String(Math.round(e.clientY - r.top)).padStart(3, '0')}`)
-    }
-    el.addEventListener('mousemove', onMove)
-    return () => el.removeEventListener('mousemove', onMove)
-  }, [])
+  }, [activeTab, tracking.isRunning, tracking.start, tracking.pause, tracking.reset])
 
   const pal = colorPalettes[glow]
   const targetW = targetSize
@@ -291,7 +109,7 @@ export default function App() {
 
   const handleTabChange = (m: GameMode) => {
     // pause current before switch
-    if (isRunning) pause()
+    if (tracking.isRunning) tracking.pause()
     setActiveTab(m)
   }
 
@@ -322,7 +140,7 @@ export default function App() {
           <div className="flex items-center gap-3 shrink-0">
             <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/30 text-xs font-body">
               <span className="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
-              <span className="text-on-surface-variant font-medium">FPS: {fps}</span>
+              <span className="text-on-surface-variant font-medium">FPS: {tracking.fps}</span>
             </div>
             <button
               className="w-8 h-8 rounded-lg bg-surface-container-low border border-outline-variant/40 hover:border-secondary hover:text-secondary text-on-surface-variant flex items-center justify-center transition"
@@ -346,26 +164,26 @@ export default function App() {
                 <section className="w-full bg-surface rounded-2xl p-4 border border-outline-variant/40 flex flex-wrap items-center justify-between gap-4 shadow-lg">
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/30">
-                      <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-tertiary animate-pulse' : isPaused ? 'bg-error' : 'bg-outline'}`}></span>
-                      <span className="text-xs uppercase font-bold tracking-wider text-outline">{isRunning ? 'ACTIVE // TRACKING' : isPaused ? 'PAUSED' : 'READY // STANDBY'}</span>
+                      <span className={`w-2 h-2 rounded-full ${tracking.isRunning ? 'bg-tertiary animate-pulse' : tracking.isPaused ? 'bg-error' : 'bg-outline'}`}></span>
+                      <span className="text-xs uppercase font-bold tracking-wider text-outline">{tracking.isRunning ? 'ACTIVE // TRACKING' : tracking.isPaused ? 'PAUSED' : 'READY // STANDBY'}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-6 sm:gap-10">
                     <div className="flex flex-col items-center">
                       <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Time On Target</span>
                       <div className="flex items-baseline gap-1">
-                        <span className="font-headline text-3xl font-black text-primary tracking-tight">{hud.tot.toFixed(1)}</span>
+                        <span className="font-headline text-3xl font-black text-primary tracking-tight">{tracking.hud.tot.toFixed(1)}</span>
                         <span className="text-[10px] text-outline font-body">S</span>
                       </div>
                     </div>
                     <div className="flex flex-col items-center">
                       <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Accuracy</span>
-                      <span className="font-headline text-3xl font-black text-tertiary tracking-tight">{hud.acc.toFixed(1)}%</span>
+                      <span className="font-headline text-3xl font-black text-tertiary tracking-tight">{tracking.hud.acc.toFixed(1)}%</span>
                     </div>
                     <div className="flex flex-col items-center">
                       <span className="text-[11px] uppercase tracking-widest text-outline font-body font-semibold">Time Remaining</span>
                       <div className="flex items-baseline gap-1">
-                        <span className="font-headline text-3xl font-black text-on-surface">{hud.timer === Infinity ? '∞' : hud.timer.toFixed(1)}</span>
+                        <span className="font-headline text-3xl font-black text-on-surface">{tracking.hud.timer === Infinity ? '∞' : tracking.hud.timer.toFixed(1)}</span>
                         <span className="text-[10px] text-outline font-body">S</span>
                       </div>
                     </div>
@@ -381,7 +199,14 @@ export default function App() {
                 </section>
                 <div
                   ref={arenaRef}
-                  className="relative w-full aspect-[16/10] min-h-[440px] bg-surface-container-lowest rounded-2xl border border-outline-variant/50 overflow-hidden shadow-2xl flex flex-col justify-between select-none"
+                  onPointerDown={tracking.onPointerDown}
+                  onPointerMove={tracking.onPointerMove}
+                  onPointerUp={tracking.onPointerUp}
+                  onPointerEnter={tracking.onPointerEnter}
+                  onPointerCancel={tracking.onPointerCancel}
+                  onPointerLeave={tracking.onPointerLeave}
+                  style={{ touchAction: 'none' }}
+                  className="relative w-full aspect-[16/10] min-h-[440px] bg-surface-container-lowest rounded-2xl border border-outline-variant/50 overflow-hidden shadow-2xl flex flex-col justify-between select-none touch-none"
                 >
                   <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-25 text-outline-variant" xmlns="http://www.w3.org/2000/svg">
                     <defs>
@@ -397,19 +222,17 @@ export default function App() {
 
                   <div className="relative z-10 p-3 flex items-center justify-between pointer-events-none text-xs">
                     <div className="flex items-center gap-2 bg-surface/80 backdrop-blur-md px-3 py-1 rounded-md border border-outline-variant/40 font-body text-outline">
-                      <span>CURSOR COORDINATES</span><span>•</span><span>{coords}</span>
+                      <span>CURSOR COORDINATES</span><span>•</span><span>{tracking.coords}</span>
                     </div>
-                    <div className={`${isHovered && isRunning ? '' : 'hidden'} px-2.5 py-0.5 rounded bg-tertiary/20 text-tertiary border border-tertiary/40 font-bold uppercase tracking-wider text-[11px]`}>
+                    <div className={`${tracking.isHovered && tracking.isRunning ? '' : 'hidden'} px-2.5 py-0.5 rounded bg-tertiary/20 text-tertiary border border-tertiary/40 font-bold uppercase tracking-wider text-[11px]`}>
                       ON TARGET
                     </div>
                   </div>
 
                   <div
                     ref={targetRef}
-                    className="absolute cursor-crosshair z-20 flex items-center justify-center pointer-events-auto"
+                    className="absolute z-20 flex items-center justify-center pointer-events-none"
                     style={{ left: '50%', top: '50%', width: targetW, height: targetH, transform: 'translate(-50%, -50%)' }}
-                    onMouseEnter={() => { stateRef.current.isHovered = true; setIsHovered(true) }}
-                    onMouseLeave={() => { stateRef.current.isHovered = false; setIsHovered(false) }}
                   >
                     <div
                       className={`w-full h-full flex items-center justify-center transition-all ${pal.bg}`}
@@ -418,7 +241,7 @@ export default function App() {
                       <div className="w-2.5 h-2.5 rounded-full bg-background/90"></div>
                     </div>
                     <div
-                      className={`absolute -inset-2 pointer-events-none transition-opacity border-2 ${pal.ring} ${isHovered ? 'opacity-100' : 'opacity-0'}`}
+                      className={`absolute -inset-2 pointer-events-none transition-opacity border-2 ${pal.ring} ${tracking.isHovered ? 'opacity-100' : 'opacity-0'}`}
                       style={{ borderRadius: targetShape === 'sphere' ? '9999px' : '28px' }}
                     />
                   </div>
@@ -427,12 +250,12 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <span className="text-outline text-[11px] uppercase tracking-wider">Contact:</span>
                       <div className="w-24 h-1.5 bg-surface-container rounded-full overflow-hidden">
-                        <div className="h-full bg-tertiary transition-all duration-75" style={{ width: isHovered && isRunning ? '100%' : '0%' }}></div>
+                        <div className="h-full bg-tertiary transition-all duration-75" style={{ width: tracking.isHovered && tracking.isRunning ? '100%' : '0%' }}></div>
                       </div>
                     </div>
                   </div>
 
-                  {!isRunning && !showResults && (
+                  {!tracking.isRunning && !tracking.showResults && (
                     <div className="absolute inset-0 bg-surface-container-lowest/85 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center gap-4">
                       <div className="w-14 h-14 rounded-2xl bg-primary-container/30 border border-primary/40 flex items-center justify-center shadow-lg text-primary">
                         <span className="material-symbols-outlined text-3xl">sports_esports</span>
@@ -444,12 +267,12 @@ export default function App() {
                         </p>
                       </div>
                       <button
-                        onClick={start}
+                        onClick={tracking.start}
                         className="mt-2 px-8 py-3.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-headline font-black text-base uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(126,34,206,0.4)] flex items-center gap-2 active:scale-95 cursor-pointer"
                         type="button"
                       >
                         <span className="material-symbols-outlined text-xl">play_arrow</span>
-                        <span>{isPaused ? 'RESUME TRACKING' : 'START PRACTICE'}</span>
+                        <span>{tracking.isPaused ? 'RESUME TRACKING' : 'START PRACTICE'}</span>
                         <span className="text-[11px] font-body bg-white/20 px-2 py-0.5 rounded ml-1">[SPACE]</span>
                       </button>
                       <div className="flex items-center gap-4 text-xs text-outline font-body mt-1">
@@ -458,22 +281,22 @@ export default function App() {
                     </div>
                   )}
 
-                  {showResults && result && (
+                  {tracking.showResults && tracking.result && (
                     <div className="absolute inset-0 bg-surface-container-lowest/95 backdrop-blur-lg z-40 flex flex-col items-center justify-center p-6 text-center gap-4">
                       <div className="flex flex-col items-center">
                         <span className="text-xs uppercase tracking-widest text-secondary font-bold font-body">Session Complete</span>
-                        <h3 className="font-headline text-3xl sm:text-4xl font-black text-on-surface tracking-tight mt-1 uppercase">{result.rank}</h3>
-                        <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-tertiary/20 text-tertiary border border-tertiary/30 mt-2">{result.badge}</span>
+                        <h3 className="font-headline text-3xl sm:text-4xl font-black text-on-surface tracking-tight mt-1 uppercase">{tracking.result.rank}</h3>
+                        <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-tertiary/20 text-tertiary border border-tertiary/30 mt-2">{tracking.result.badge}</span>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-xl my-2">
-                        <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/30 flex flex-col items-center"><span className="text-[10px] uppercase tracking-wider text-outline font-semibold">Total Time on Target</span><span className="font-headline text-2xl font-black text-primary mt-1">{result.on}s</span></div>
-                        <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/30 flex flex-col items-center"><span className="text-[10px] uppercase tracking-wider text-outline font-semibold">Accuracy</span><span className="font-headline text-2xl font-black text-tertiary mt-1">{result.acc.toFixed(1)}%</span></div>
-                        <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/30 flex flex-col items-center"><span className="text-[10px] uppercase tracking-wider text-outline font-semibold">On Target</span><span className="font-headline text-2xl font-black text-on-surface mt-1">{result.on}s</span></div>
-                        <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/30 flex flex-col items-center"><span className="text-[10px] uppercase tracking-wider text-outline font-semibold">Off Target</span><span className="font-headline text-2xl font-black text-error mt-1">{result.off}s</span></div>
+                        <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/30 flex flex-col items-center"><span className="text-[10px] uppercase tracking-wider text-outline font-semibold">Total Time on Target</span><span className="font-headline text-2xl font-black text-primary mt-1">{tracking.result.on}s</span></div>
+                        <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/30 flex flex-col items-center"><span className="text-[10px] uppercase tracking-wider text-outline font-semibold">Accuracy</span><span className="font-headline text-2xl font-black text-tertiary mt-1">{tracking.result.acc.toFixed(1)}%</span></div>
+                        <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/30 flex flex-col items-center"><span className="text-[10px] uppercase tracking-wider text-outline font-semibold">On Target</span><span className="font-headline text-2xl font-black text-on-surface mt-1">{tracking.result.on}s</span></div>
+                        <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/30 flex flex-col items-center"><span className="text-[10px] uppercase tracking-wider text-outline font-semibold">Off Target</span><span className="font-headline text-2xl font-black text-error mt-1">{tracking.result.off}s</span></div>
                       </div>
                       <div className="flex items-center gap-3 mt-2">
-                        <button onClick={start} className="px-6 py-2.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-headline font-black text-sm uppercase tracking-wider transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95" type="button"><span className="material-symbols-outlined text-[18px]">replay</span><span>Play Again</span></button>
-                        <button onClick={reset} className="px-5 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold uppercase tracking-wider border border-outline-variant/40 transition cursor-pointer" type="button">Adjust Settings</button>
+                        <button onClick={tracking.start} className="px-6 py-2.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-headline font-black text-sm uppercase tracking-wider transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95" type="button"><span className="material-symbols-outlined text-[18px]">replay</span><span>Play Again</span></button>
+                        <button onClick={tracking.reset} className="px-5 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold uppercase tracking-wider border border-outline-variant/40 transition cursor-pointer" type="button">Adjust Settings</button>
                       </div>
                     </div>
                   )}
@@ -481,8 +304,8 @@ export default function App() {
 
                 <div className="flex flex-wrap items-center justify-between gap-3 bg-surface rounded-xl px-4 py-2.5 border border-outline-variant/40 text-xs">
                   <div className="flex items-center gap-2">
-                    <button onClick={() => (isRunning ? pause() : start())} className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition font-semibold flex items-center gap-1.5 cursor-pointer" type="button"><span className="material-symbols-outlined text-[16px]">pause</span><span>Pause [ESC]</span></button>
-                    <button onClick={reset} className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition font-semibold flex items-center gap-1.5 cursor-pointer" type="button"><span className="material-symbols-outlined text-[16px]">restart_alt</span><span>Reset [R]</span></button>
+                    <button onClick={() => (tracking.isRunning ? tracking.pause() : tracking.start())} className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition font-semibold flex items-center gap-1.5 cursor-pointer" type="button"><span className="material-symbols-outlined text-[16px]">pause</span><span>Pause [ESC]</span></button>
+                    <button onClick={tracking.reset} className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition font-semibold flex items-center gap-1.5 cursor-pointer" type="button"><span className="material-symbols-outlined text-[16px]">restart_alt</span><span>Reset [R]</span></button>
                   </div>
                   <div className="flex items-center gap-3 text-outline">
                     <span>Pattern: <strong className="text-secondary font-medium">{shortPattern[pattern]}</strong></span><span>•</span><span>Size: <strong className="text-tertiary font-medium">{targetSize}px (Medium)</strong></span>
@@ -524,7 +347,7 @@ export default function App() {
                 glow={glow} setGlow={setGlow}
                 duration={duration} setDuration={setDuration}
                 activeTab={activeTab}
-                stateRef={stateRef}
+                stateRef={tracking.stateRef}
                 bestTracking={bestTracking}
                 bestFlick={bestFlick}
                 totalTracking={totalTracking}
@@ -571,7 +394,7 @@ export default function App() {
               glow={glow} setGlow={setGlow}
               duration={duration} setDuration={setDuration}
               activeTab={activeTab}
-              stateRef={stateRef}
+              stateRef={tracking.stateRef}
               bestTracking={bestTracking}
               bestFlick={bestFlick}
               totalTracking={totalTracking}

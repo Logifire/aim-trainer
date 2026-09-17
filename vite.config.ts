@@ -5,4 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: '/aim-trainer/',
   plugins: [react()],
+  server: {
+    host: true,
+  },
 })
