@@ -61,7 +61,6 @@ export function useTrackingGame(opts: {
   const [isPaused, setIsPaused] = useState(false)
   const [hud, setHud] = useState<TrackingHud>({ score: 0, acc: 0, tot: 0, timer: duration >= 9999 ? Infinity : duration })
   const [coords, setCoords] = useState('X: 000 Y: 000')
-  const [fps, setFps] = useState(60)
   const [isHovered, setIsHovered] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [result, setResult] = useState<TrackingResult | null>(null)
@@ -115,7 +114,6 @@ export function useTrackingGame(opts: {
     if (!isRunning) setHud((h) => ({ ...h, timer: duration >= 9999 ? Infinity : duration }))
   }, [targetShape, targetSize, speedMul, pattern, glow, duration, isRunning])
 
-  const fpsRef = useRef({ frames: 0, last: performance.now() })
   const rafRef = useRef<number>(0)
   const lastTsRef = useRef(0)
 
@@ -155,13 +153,6 @@ export function useTrackingGame(opts: {
 
   const loop = useCallback(
     (ts: number) => {
-      const f = fpsRef.current
-      f.frames++
-      if (ts - f.last >= 1000) {
-        setFps(Math.round((f.frames * 1000) / (ts - f.last)))
-        f.frames = 0
-        f.last = ts
-      }
       const dt = Math.min((ts - lastTsRef.current) / 1000, 0.1)
       lastTsRef.current = ts
       const s = stateRef.current
@@ -425,7 +416,6 @@ export function useTrackingGame(opts: {
     isPaused,
     hud,
     coords,
-    fps,
     isHovered,
     showResults,
     result,

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GameMode, MovementPattern, SessionDuration, TargetGlow, TargetShape } from './types'
 import { useHistory } from './hooks/useHistory'
 import { useTrackingGame } from './hooks/useTrackingGame'
+import { useHz } from './hooks/useHz'
+import { useFps } from './hooks/useFps'
 import { Tabs } from './components/Tabs'
 import { FlickArena } from './components/FlickArena'
 
@@ -35,6 +37,10 @@ export default function App() {
   useEffect(() => localStorage.setItem('aim:duration', String(duration)), [duration])
 
   const { add, trackingRecords, flickRecords, bestTracking, bestFlick, totalTracking, totalFlick } = useHistory()
+
+  // Global display metrics — independent of game loops, shared between modes
+  const hz = useHz()
+  const fps = useFps()
 
   // tracking engine — extracted to hook for better structure + touch support
   const arenaRef = useRef<HTMLDivElement>(null)
@@ -124,26 +130,29 @@ export default function App() {
   return (
     <div className="bg-background font-body text-on-surface antialiased selection:bg-primary selection:text-on-primary min-h-screen flex flex-col justify-between">
       <header className="w-full bg-surface/90 border-b border-outline-variant/40 sticky top-0 z-50 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-9 h-9 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center text-primary shadow-[0_0_12px_rgba(192,132,252,0.3)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-none sm:shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center text-primary shadow-[0_0_12px_rgba(192,132,252,0.3)] shrink-0">
               <span className="material-symbols-outlined text-xl">radar</span>
             </div>
-            <div className="flex flex-col">
-              <span className="font-headline font-black text-lg tracking-wider text-on-surface flex items-center gap-1.5">AIM TRAINER</span>
-              <span className="text-[10px] tracking-widest text-outline uppercase font-body">{activeTab === 'tracking' ? 'Smooth Tracking Practice' : 'Flick Shot Practice'}</span>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="font-headline font-black text-lg tracking-wider text-on-surface flex items-center gap-1.5 truncate">AIM TRAINER</span>
+              <span className="text-[10px] tracking-widest text-outline uppercase font-body truncate hidden min-[380px]:block">{activeTab === 'tracking' ? 'Smooth Tracking Practice' : 'Flick Shot Practice'}</span>
             </div>
           </div>
           <div className="hidden sm:flex flex-1 justify-center">
             <Tabs active={activeTab} onChange={handleTabChange} />
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/30 text-xs font-body">
-              <span className="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
-              <span className="text-on-surface-variant font-medium">FPS: {tracking.fps}</span>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div
+              className="flex items-center gap-1.5 sm:gap-2 bg-surface-container-low px-2 sm:px-3 py-1.5 rounded-lg border border-outline-variant/30 text-[11px] sm:text-xs font-body whitespace-nowrap min-w-0 max-w-[42vw] sm:max-w-none overflow-hidden"
+              title={hz ? `Skærm: ${hz} Hz • Live FPS: ${fps}` : `Måler Hz… • FPS: ${fps}`}
+            >
+              <span className="w-2 h-2 rounded-full bg-tertiary animate-pulse shrink-0"></span>
+              <span className="text-on-surface-variant font-medium truncate min-w-0">{hz ? `${hz} Hz` : '— Hz'} • FPS: {fps}</span>
             </div>
             <button
-              className="w-8 h-8 rounded-lg bg-surface-container-low border border-outline-variant/40 hover:border-secondary hover:text-secondary text-on-surface-variant flex items-center justify-center transition"
+              className="w-8 h-8 rounded-lg bg-surface-container-low border border-outline-variant/40 hover:border-secondary hover:text-secondary text-on-surface-variant flex items-center justify-center transition shrink-0"
               onClick={handleFullscreen}
               title="Fullscreen"
             >
