@@ -7,9 +7,16 @@
   body {
     margin: 0;
     padding: 0;
+    min-height: 100dvh;
   }
   body {
     overscroll-behavior: none;
+  }
+  /* pseudo-fullscreen helper: ensure dvh fallback */
+  @supports not (height: 100dvh) {
+    html, body {
+      min-height: -webkit-fill-available;
+    }
   }
 }
 ::-webkit-scrollbar {

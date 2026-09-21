@@ -6,6 +6,7 @@ import { useHz } from './hooks/useHz'
 import { useFps } from './hooks/useFps'
 import { Tabs } from './components/Tabs'
 import { FlickArena } from './components/FlickArena'
+import { useIsPseudoDevice, usePseudoFullscreen } from './hooks/usePseudoFullscreen'
 
 const colorPalettes: Record<TargetGlow, { bg: string; glow: string; ring: string }> = {
   cyan: { bg: 'bg-secondary-container', glow: '0 0 24px rgba(2, 132, 199, 0.75)', ring: 'border-secondary' },
@@ -41,6 +42,11 @@ export default function App() {
   // Global display metrics — independent of game loops, shared between modes
   const hz = useHz()
   const fps = useFps()
+
+  // pseudo-fullscreen: on pure touch devices (hybrid exception) use CSS overlay instead of native fullscreen
+  const isPseudoDevice = useIsPseudoDevice()
+  const { pseudoActive, toggle: togglePseudo, exit: exitPseudo } = usePseudoFullscreen(isPseudoDevice)
+  const flickArenaWrapperRef = useRef<HTMLDivElement>(null)
 
   // tracking engine — extracted to hook for better structure + touch support
   const arenaRef = useRef<HTMLDivElement>(null)
@@ -116,15 +122,34 @@ export default function App() {
   const handleTabChange = (m: GameMode) => {
     // pause current before switch
     if (tracking.isRunning) tracking.pause()
+    if (pseudoActive) exitPseudo()
     setActiveTab(m)
   }
 
+  // also exit pseudo fullscreen when tracking pauses via external tab switch handled above,
+  // and ensure body scroll lock is cleaned (handled in hook)
+
   const handleFullscreen = () => {
-    if (activeTab === 'tracking') arenaRef.current?.requestFullscreen?.()
-    else {
-      const el = document.querySelector('[data-flick-arena]') as HTMLElement | null
-      el?.requestFullscreen?.()
+    if (isPseudoDevice) {
+      togglePseudo()
+      return
     }
+    // desktop / hybrid: try native, fallback to pseudo on failure (e.g. iOS quirks)
+    const tryNative = async () => {
+      try {
+        if (activeTab === 'tracking') {
+          if (arenaRef.current?.requestFullscreen) await arenaRef.current.requestFullscreen()
+          else togglePseudo()
+        } else {
+          const el = flickArenaWrapperRef.current ?? (document.querySelector('[data-flick-arena]') as HTMLElement | null)
+          if (el?.requestFullscreen) await el.requestFullscreen()
+          else togglePseudo()
+        }
+      } catch {
+        togglePseudo()
+      }
+    }
+    void tryNative()
   }
 
   return (
@@ -154,9 +179,10 @@ export default function App() {
             <button
               className="w-8 h-8 rounded-lg bg-surface-container-low border border-outline-variant/40 hover:border-secondary hover:text-secondary text-on-surface-variant flex items-center justify-center transition shrink-0"
               onClick={handleFullscreen}
-              title="Fullscreen"
+              title={pseudoActive ? 'Afslut fuld skærm' : 'Fuld skærm'}
+              aria-label={pseudoActive ? 'Afslut fuld skærm' : 'Fuld skærm'}
             >
-              <span className="material-symbols-outlined text-[18px]">fullscreen</span>
+              <span className="material-symbols-outlined text-[18px]">{pseudoActive ? 'close_fullscreen' : 'fullscreen'}</span>
             </button>
           </div>
         </div>
@@ -169,7 +195,18 @@ export default function App() {
 
         {activeTab === 'tracking' ? (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              <div className="lg:col-span-8 flex flex-col gap-3">
+              <div className={`${pseudoActive ? 'fixed inset-0 z-[100] h-[100dvh] w-screen bg-background overflow-auto p-4 flex flex-col gap-3' : 'lg:col-span-8 flex flex-col gap-3'}`}>
+                {pseudoActive && (
+                  <button
+                    onClick={exitPseudo}
+                    className="self-end w-9 h-9 rounded-full bg-surface border border-outline-variant/40 text-on-surface hover:bg-surface-container flex items-center justify-center shadow-lg shrink-0"
+                    title="Afslut fuld skærm"
+                    aria-label="Afslut fuld skærm"
+                    type="button"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">close_fullscreen</span>
+                  </button>
+                )}
                 <section className="w-full bg-surface rounded-2xl p-4 border border-outline-variant/40 flex flex-wrap items-center justify-between gap-4 shadow-lg">
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/30">
@@ -215,7 +252,7 @@ export default function App() {
                   onPointerCancel={tracking.onPointerCancel}
                   onPointerLeave={tracking.onPointerLeave}
                   style={{ touchAction: tracking.isRunning ? 'none' : 'auto' }}
-                  className={`relative w-full aspect-[16/10] min-h-[440px] bg-surface-container-lowest rounded-2xl border border-outline-variant/50 overflow-hidden shadow-2xl flex flex-col justify-between select-none ${tracking.isRunning ? 'touch-none' : ''}`}
+                  className={`relative w-full ${pseudoActive ? 'flex-1 min-h-[320px] aspect-auto rounded-xl' : 'aspect-[16/10] min-h-[440px] rounded-2xl'} bg-surface-container-lowest border border-outline-variant/50 overflow-hidden shadow-2xl flex flex-col justify-between select-none ${tracking.isRunning ? 'touch-none' : ''}`}
                 >
                   <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-25 text-outline-variant" xmlns="http://www.w3.org/2000/svg">
                     <defs>
@@ -311,7 +348,7 @@ export default function App() {
                   )}
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-surface rounded-xl px-4 py-2.5 border border-outline-variant/40 text-xs">
+                <div className={`flex flex-wrap items-center justify-between gap-3 bg-surface rounded-xl px-4 py-2.5 border border-outline-variant/40 text-xs ${pseudoActive ? 'hidden' : ''}`}>
                   <div className="flex items-center gap-2">
                     <button onClick={() => (tracking.isRunning ? tracking.pause() : tracking.start())} className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition font-semibold flex items-center gap-1.5 cursor-pointer" type="button"><span className="material-symbols-outlined text-[16px]">pause</span><span>Pause [ESC]</span></button>
                     <button onClick={tracking.reset} className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition font-semibold flex items-center gap-1.5 cursor-pointer" type="button"><span className="material-symbols-outlined text-[16px]">restart_alt</span><span>Reset [R]</span></button>
@@ -320,7 +357,7 @@ export default function App() {
                     <span>Pattern: <strong className="text-secondary font-medium">{shortPattern[pattern]}</strong></span><span>•</span><span>Size: <strong className="text-tertiary font-medium">{targetSize}px (Medium)</strong></span>
                   </div>
                 </div>
-                <div className="flex flex-col gap-3 pt-2">
+                <div className={`flex flex-col gap-3 pt-2 ${pseudoActive ? 'hidden' : ''}`}>
                   <div className="flex items-center gap-2"><span className="material-symbols-outlined text-tertiary text-lg">history</span><h4 className="font-headline font-bold text-xs uppercase tracking-wider text-on-surface">Recent Tracking Sessions</h4></div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {trackingRecords.length === 0 ? (
@@ -365,9 +402,24 @@ export default function App() {
             </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <div className="lg:col-span-8 flex flex-col gap-3" data-flick-arena>
-              <FlickArena targetSize={targetSize} targetShape={targetShape} speedMul={speedMul} glow={glow} duration={duration} onAddRecord={handleFlickFinish} />
-              <div className="flex flex-col gap-3 pt-2">
+            <div
+              ref={flickArenaWrapperRef}
+              data-flick-arena
+              className={`${pseudoActive ? 'fixed inset-0 z-[100] h-[100dvh] w-screen bg-background overflow-auto p-4 flex flex-col gap-3' : 'lg:col-span-8 flex flex-col gap-3'}`}
+            >
+              {pseudoActive && (
+                <button
+                  onClick={exitPseudo}
+                  className="self-end w-9 h-9 rounded-full bg-surface border border-outline-variant/40 text-on-surface hover:bg-surface-container flex items-center justify-center shadow-lg shrink-0"
+                  title="Afslut fuld skærm"
+                  aria-label="Afslut fuld skærm"
+                  type="button"
+                >
+                  <span className="material-symbols-outlined text-[20px]">close_fullscreen</span>
+                </button>
+              )}
+              <FlickArena targetSize={targetSize} targetShape={targetShape} speedMul={speedMul} glow={glow} duration={duration} onAddRecord={handleFlickFinish} isPseudo={pseudoActive} />
+              <div className={`flex flex-col gap-3 pt-2 ${pseudoActive ? 'hidden' : ''}`}>
                 <div className="flex items-center gap-2"><span className="material-symbols-outlined text-tertiary text-lg">history</span><h4 className="font-headline font-bold text-xs uppercase tracking-wider text-on-surface">Recent Flick Sessions</h4></div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {flickRecords.length === 0 ? (

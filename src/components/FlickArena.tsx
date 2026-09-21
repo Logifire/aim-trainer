@@ -18,9 +18,10 @@ interface Props {
   duration: SessionDuration
   onAddRecord: (r: { hits: number; shots: number; misses: number; acc: number; avgMs: number | null }) => void
   onFpsRequestFullscreen?: (el: HTMLDivElement | null) => void
+  isPseudo?: boolean
 }
 
-export function FlickArena({ targetSize, targetShape, speedMul, glow, duration, onAddRecord }: Props) {
+export function FlickArena({ targetSize, targetShape, speedMul, glow, duration, onAddRecord, isPseudo }: Props) {
   const arenaRef = useRef<HTMLDivElement>(null)
 
   const { isRunning, isPaused, showResults, result, hud, targetPos, coords, flashMiss, start, pause, reset, onHit, onMiss } =
@@ -62,7 +63,7 @@ export function FlickArena({ targetSize, targetShape, speedMul, glow, duration, 
   // Use effect
   // We need to import useEffect
   return (
-    <div className="flex flex-col gap-3">
+    <div className={`flex flex-col gap-3 ${isPseudo ? 'flex-1 min-h-0' : ''}`}>
       {/* Telemetry for flick */}
       <section className="w-full bg-surface rounded-2xl p-4 border border-outline-variant/40 flex flex-wrap items-center justify-between gap-4 shadow-lg">
         <div className="flex items-center gap-3">
@@ -108,7 +109,7 @@ export function FlickArena({ targetSize, targetShape, speedMul, glow, duration, 
           if (!isRunning) return
           onMiss()
         }}
-        className={`relative w-full aspect-[16/10] min-h-[440px] bg-surface-container-lowest rounded-2xl border overflow-hidden shadow-2xl flex flex-col justify-between select-none ${flashMiss ? 'border-error/60' : 'border-outline-variant/50'}`}
+        className={`relative w-full ${isPseudo ? 'flex-1 min-h-[320px] aspect-auto rounded-xl' : 'aspect-[16/10] min-h-[440px] rounded-2xl'} bg-surface-container-lowest border overflow-hidden shadow-2xl flex flex-col justify-between select-none ${flashMiss ? 'border-error/60' : 'border-outline-variant/50'}`}
       >
         <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-25 text-outline-variant" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -213,7 +214,7 @@ export function FlickArena({ targetSize, targetShape, speedMul, glow, duration, 
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-surface rounded-xl px-4 py-2.5 border border-outline-variant/40 text-xs">
+      <div className={`flex flex-wrap items-center justify-between gap-3 bg-surface rounded-xl px-4 py-2.5 border border-outline-variant/40 text-xs ${isPseudo ? 'hidden' : ''}`}>
         <div className="flex items-center gap-2">
           <button onClick={() => (isRunning ? pause() : start())} className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition font-semibold flex items-center gap-1.5 cursor-pointer" type="button"><span className="material-symbols-outlined text-[16px]">pause</span><span>Pause [ESC]</span></button>
           <button onClick={reset} className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition font-semibold flex items-center gap-1.5 cursor-pointer" type="button"><span className="material-symbols-outlined text-[16px]">restart_alt</span><span>Reset [R]</span></button>
