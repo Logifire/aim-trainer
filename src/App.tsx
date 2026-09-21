@@ -214,8 +214,8 @@ export default function App() {
                   onPointerEnter={tracking.onPointerEnter}
                   onPointerCancel={tracking.onPointerCancel}
                   onPointerLeave={tracking.onPointerLeave}
-                  style={{ touchAction: 'none' }}
-                  className="relative w-full aspect-[16/10] min-h-[440px] bg-surface-container-lowest rounded-2xl border border-outline-variant/50 overflow-hidden shadow-2xl flex flex-col justify-between select-none touch-none"
+                  style={{ touchAction: tracking.isRunning ? 'none' : 'auto' }}
+                  className={`relative w-full aspect-[16/10] min-h-[440px] bg-surface-container-lowest rounded-2xl border border-outline-variant/50 overflow-hidden shadow-2xl flex flex-col justify-between select-none ${tracking.isRunning ? 'touch-none' : ''}`}
                 >
                   <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-25 text-outline-variant" xmlns="http://www.w3.org/2000/svg">
                     <defs>
